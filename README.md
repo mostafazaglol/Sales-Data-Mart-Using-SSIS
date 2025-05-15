@@ -1,11 +1,11 @@
 # Sales-Data-Mart-Using-SSIS
 
 1. Data Source & Destination
-Source: AdventureWorks2014 database
 
+Source: AdventureWorks2014 database
 Destination: Eo-AdventureWorksDW2014 (Data Warehouse)
 
-2. Data Modeling (Star Schema)
+3. Data Modeling (Star Schema)
 Dimension Tables: Dim_Product, Dim_Customer, Dim_Territory, Dim_Date
 
 Fact Table: Fact_Sales
