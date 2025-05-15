@@ -1,0 +1,115 @@
+# 📦 Building Sales Data Mart Using SSIS
+
+## 📥 Source and Destination Setup
+- First, we downloaded an `AdventureWorks2014` database to make it our data source.  
+- Then we made our DWH database called `Eo-AdventureWorksDW2014` to make it as destination database.
+
+## 🧱 Table Structure
+- Start to make the tables that I will store the data on it like `Product`, `Customer`, `Territory`, `Date` as **dimension tables** and `Sales` as **fact table**.
+- Make each column with its constraints and add some columns like:  
+  - `source system code` to know each row comes from which system.  
+  - **Slowly Changing Dimension (SCD)** like `start date`, `end date`, and `is_current` column for the historical attributes.
+- Make our **primary keys**, **foreign keys**, and some **indexes** for the table to improve the performance of selecting and retrieving the data.
+
+## 📊 Data Modeling
+- Make our data model and relationships for these tables with **star schema**.
+
+## ⚙️ SSIS Project
+- Start to make our SQL Server Integration Service (**SSIS**) project to run packages and use **Data Flow** to get the data from our source and make some transformations for it then put it in our DWH destination.
+- Using **connection manager** as `OLE DB` for the source and destination database.
+
+## 📐 Dimension Tables
+
+### 1. Dim Product
+- Get the data from the source as `OLE DB Provider SQL Server`.
+- Use **Lookup** for adding some columns from other tables that work as left join.
+- Use **Derived Columns** for replacing nulls.
+- Use **SCD** and make for each column the specific type:
+  - Type 0: Fixed attribute  
+  - Type 1: Changing attribute  
+  - Type 2: Historical attribute  
+- Load the data into the `dim_product` table as destination DWH.
+
+### 2. Dim Customer
+- Same steps as **Dim Product**.
+- Load the data into the `dim_customer` table as destination DWH.
+
+### 3. Dim Date
+- Create an Excel file with **Python** code to get the date from `1/1/2000` to `12/31/2030`.
+- Use **Data Conversion** to convert each column from source with the same datatype as destination.
+- Load our data into `dim_date` table as destination DWH.
+
+### 4. Dim Territory
+- First created a table called **Lookup Country** to put in it every abbreviation with the full name of the country.
+- Selected the data source from the database and used **Lookup** in SSIS to merge the `territory` table with `Lookup Country` to use only the full name of the country, not the abbreviation.
+- Load it into `dim_territory` table as destination DWH.
+
+## 📈 Fact Sales Table
+
+### 🔁 Full Load
+- Get the data from two data sources: `SalesOrderHeader` and `SalesOrderDetail` table.
+- Use a **Merge Join** and all data sources must be ordered by the same column, so I order by `SalesOrderID` in the SQL command.
+
+**Note:**
+1. Use the **Advanced Editor** > `Input and Output Properties` > `OLE DB Source Output` → Set `IsSorted` to `True`.  
+   Then click on the `Output Columns` and set `SortKeyPosition = 1` for `SalesOrderID` for both sources.
+2. If not using `ORDER BY SalesOrderID` in the SQL command, then use the **Sort** from the SSIS Toolbox.
+
+- Use **Lookup Join** to get the PK for every Dimension.
+- Use **Derived Column** to replace every null for the PK with `0`, which refers to the `Unknown` row created/inserted in each dimension (null may occur due to "Ignore Failure" in Lookup Join).
+- Use **Derived Column** to get:
+  - `extended_sales = quantity * unit_price`
+  - `extended_cost = quantity * cost`
+- Load all this data into the `Fact Sales` table as the destination DWH.
+
+**Note:**  
+In the full load, if I run the package again without truncating, I will get an error because of duplicated data in the Primary Key.  
+To solve this problem:
+- Use an **Execute SQL Task**
+- Connect with destination connection manager
+- Put the SQL command:  
+  ```sql
+  TRUNCATE TABLE fact_sales;
+  ```
+- Place it before the **Data Flow** to remove existing data before running the package.
+
+### 🔁 Incremental Load
+- The idea is to choose a specific column (`ModifiedDate`) from the source to build the package and store it in a new table called `meta_control_table` to compare against the last load date.
+
+#### Steps:
+1. Create table `meta_control_table` to store:
+   - Name of the fact table  
+   - The specific column used for comparison (e.g. `ModifiedDate`)
+
+2. Copy the Full Load package and paste it to create an **Incremental Load** version.
+
+3. Truncate the table, remove the relation between "Truncate Fact Sales" and "Data Flow", and disable it.
+
+4. Add a new **Execute SQL Task** to get the latest load date:
+   - SQL command to get `last_load_date` from `meta_control_table`.
+   - Set `ResultSet = Single Row`.
+   - Define a new variable: `last_load_date`.
+
+5. Connect a new **Execute SQL Task** with the Data Flow and modify the SQL command in each source:
+   - Compare `ModifiedDate` column with 2 parameters:
+     - `last_load_date` variable  
+     - `start_time` from the system
+
+6. This will take the initial value of `last_load_date` = `'1900-01-01'`.
+
+7. Add another **Execute SQL Task** to update the `last_load_date` column:
+   - Reference the parameter to `start_time` (or last package run time).
+   - This updates the `meta_control_table` with the latest time the package was run.
+
+So, when the package runs again, it will only process newly inserted or updated rows, achieving **incremental load** instead of full.
+
+### ⚠️ Note:
+Why use the value `'2099-12-31'` as default for `last_load_date`?
+- To ensure that no issues occur if there's a problem getting the last run date from SQL.
+- If the default value `'2099-12-31'` is used mistakenly, the condition:  
+  ```sql
+  ModifiedDate >= last_load_date AND ModifiedDate < start_time
+  ```
+  will return an empty dataset. This signals that there's a problem in the package and triggers further investigation.
+
+✅ *All logic is implemented using SSIS and SQL Server — with proper handling for nulls, lookup failures, and both full and incremental data loads.*
