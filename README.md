@@ -1,33 +1,103 @@
-# Sales-Data-Mart-Using-SSIS
+# 📊 Sales Data Mart Using SSIS
 
-1. Data Source & Destination
+This project demonstrates how to build a **Sales Data Mart** using **SQL Server Integration Services (SSIS)** and the **AdventureWorks2014** database as the data source. It includes **data modeling**, **ETL development**, and both **full and incremental data loading** strategies.
 
-Source: AdventureWorks2014 database
-Destination: Eo-AdventureWorksDW2014 (Data Warehouse)
+---
 
-3. Data Modeling (Star Schema)
-Dimension Tables: Dim_Product, Dim_Customer, Dim_Territory, Dim_Date
+## 🏗️ Project Structure
 
-Fact Table: Fact_Sales
+- **Source Database**: `AdventureWorks2014`
+- **Destination Data Warehouse**: `Eo-AdventureWorksDW2014`
 
-Each dimension includes:
+---
 
-Primary Keys, Foreign Keys
+## ⭐ Data Modeling (Star Schema)
 
-Source System Code
+- **Dimension Tables**:
+  - `Dim_Product`
+  - `Dim_Customer`
+  - `Dim_Territory`
+  - `Dim_Date`
+- **Fact Table**:
+  - `Fact_Sales`
 
-Slowly Changing Dimension (SCD) fields: Start_Date, End_Date, Is_Current
+> All dimension tables include:
+> - Primary Keys & Foreign Keys  
+> - Source System Code  
+> - Slowly Changing Dimensions (SCD): `Start_Date`, `End_Date`, `Is_Current`  
+> - Performance Indexes
 
-Indexes for performance
+---
 
-3. SSIS ETL Process
-Built using SSIS Project, connecting with OLE DB to Source and Destination
+## 🔄 ETL Process with SSIS
 
-4. ETL for Each Table
-a. Dim_Product / Dim_Customer
-OLE DB Source → Lookup (join with other tables)
+### 🔌 Connections
 
-Derived Columns (replace NULLs)
+- **OLE DB** used for source and destination connections.
+
+### 📥 Dimension Table Loads
+
+#### 🧾 Dim_Product / Dim_Customer
+- OLE DB Source  
+- **Lookup** to enrich data  
+- **Derived Columns** to handle nulls  
+- **SCD Transformation** (Type 0, 1, 2)  
+- Load to DW
+
+#### 📅 Dim_Date
+- Generated using **Python** (from 2000 to 2030)  
+- Used **Data Conversion** to match destination data types  
+- Loaded to DW
+
+#### 🌍 Dim_Territory
+- Created `Lookup_Country` table for country name mapping  
+- Joined with source to replace codes with full names  
+- Loaded to DW
+
+### 🧮 Fact_Sales
+- Merge Join between `SalesOrderHeader` and `SalesOrderDetail` (sorted by `SalesOrderID`)  
+- Lookup for dimension keys (with **Ignore Failure**)  
+- Derived Columns:
+  - `Extended_Sales` = Quantity × Unit Price  
+  - `Extended_Cost` = Quantity × Cost  
+- Loaded to DW
+
+---
+
+## 🧹 Full Load Process
+
+- Uses **Execute SQL Task** to `TRUNCATE` `Fact_Sales` before loading.  
+- Reloads all data on every run.
+
+---
+
+## 🔁 Incremental Load Process
+
+- Created `meta_control_table` to track `last_load_date`  
+- Compares `ModifiedDate` with:
+  - `last_load_date` (from table)  
+  - `current_run_time` (system time)  
+- Updates `last_load_date` after each successful load  
+- Only loads new/updated records
+
+> ⚠️ Default value `2099-12-31` used to detect loading errors during testing.
+
+---
+
+## ✅ Key Notes
+
+- All lookup failures map to default `Unknown` records (ID = 0).  
+- SCD ensures history tracking for dimension changes.  
+- Efficient and optimized ETL using sorting, lookups, and derived columns.
+
+---
+
+## 📂 Technologies Used
+
+- SQL Server 2019  
+- SSIS (SQL Server Integration Services)  
+- Python (for Date Dimension generation)
+
 
 SCD Transformation (Type 0, 1, 2)
 
